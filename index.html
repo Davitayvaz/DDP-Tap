@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Meme Board">
+<meta name="theme-color" content="#1B1533">
+<title>Meme Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #1B1533;
+    --bg-deep: #120D24;
+    --card: #FFF8EC;
+    --ink: #241C42;
+    --ink-soft: #6b6285;
+    --coral: #FF5D73;
+    --yellow: #FFD23F;
+    --teal: #3FE1B0;
+    --line: rgba(255,248,236,0.14);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 15% 8%, rgba(255,93,115,0.16), transparent 40%),
+      radial-gradient(circle at 85% 92%, rgba(63,225,176,0.14), transparent 45%),
+      var(--bg);
+    color: var(--card);
+    font-family: 'Inter', sans-serif;
+    overflow:hidden;
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  .mono{ font-family:'JetBrains Mono', monospace; }
+  .fredoka{ font-family:'Fredoka', sans-serif; }
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: max(14px, env(safe-area-inset-top)) 16px 6px;
+    flex-shrink:0;
+  }
+  .brand{
+    font-family:'Fredoka', sans-serif; font-weight:700; font-size:20px;
+    letter-spacing:0.3px; display:flex; align-items:center; gap:8px;
+  }
+  .brand .dot{ width:10px; height:10px; border-radius:50%; background:var(--coral); box-shadow:0 0 10px var(--coral); }
+  .iconbtn{
+    width:38px; height:38px; border-radius:12px; border:1px solid var(--line);
+    background: rgba(255,248,236,0.06); color:var(--card);
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .iconbtn:active{ background: rgba(255,248,236,0.14); }
+
+  /* ---------- playlist chips ---------- */
+  .chiprow{
+    display:flex; gap:8px; padding: 6px 16px 14px; overflow-x:auto;
+    flex-shrink:0; scrollbar-width:none;
+  }
+  .chiprow::-webkit-scrollbar{ display:none; }
+  .chip{
+    flex-shrink:0; padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600;
+    background: rgba(255,248,236,0.07); border:1px solid var(--line); color: rgba(255,248,236,0.75);
+    white-space:nowrap; cursor:pointer;
+  }
+  .chip.active{ background:var(--yellow); color:var(--ink); border-color:var(--yellow); }
+  .chip.addnew{ color:var(--teal); border-style:dashed; }
+
+  /* ---------- stage ---------- */
+  .stage{
+    flex:1; position:relative; display:flex; flex-direction:column;
+    align-items:center; justify-content:flex-start; padding-top:6px; min-height:0;
+  }
+  .stack{
+    position:relative; width:100%; max-width:340px; height:190px;
+    display:flex; align-items:center; justify-content:center;
+    touch-action: pan-y;
+  }
+  .card{
+    position:absolute; width:230px; height:150px; border-radius:20px;
+    background:var(--card); color:var(--ink);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:14px; text-align:center; gap:6px;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+    transition: transform .25s ease, opacity .25s ease;
+    border: 3px solid var(--ink);
+  }
+  .card .name{ font-family:'Fredoka', sans-serif; font-weight:600; font-size:17px; line-height:1.2;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; word-break:break-word; }
+  .card .len{ font-size:11px; color:var(--ink-soft); }
+  .card.side{ pointer-events:none; }
+  .card.prev{ transform: translateX(-120px) rotate(-8deg) scale(0.85); opacity:0.55; z-index:1; }
+  .card.next{ transform: translateX(120px) rotate(8deg) scale(0.85); opacity:0.55; z-index:1; }
+  .card.curr{ transform: translateX(0) rotate(0) scale(1); opacity:1; z-index:2; }
+  .card.empty{ border-style:dashed; background:rgba(255,248,236,0.06); color:var(--card); }
+  .card.empty .name{ -webkit-line-clamp:4; }
+
+  .posrow{ display:flex; align-items:center; gap:14px; margin-top:10px; }
+  .navbtn{
+    width:34px; height:34px; border-radius:50%; border:1px solid var(--line);
+    background:rgba(255,248,236,0.06); color:var(--card); display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .navbtn:active{ background:rgba(255,248,236,0.16); }
+  .posrow .count{ font-size:12px; color: rgba(255,248,236,0.6); min-width:56px; text-align:center; }
+
+  /* ---------- big arcade button ---------- */
+  .buttonzone{ display:flex; flex-direction:column; align-items:center; margin-top: 18px; }
+  .arcade{
+    width:150px; height:150px; border-radius:50%;
+    background: radial-gradient(circle at 35% 30%, #ff8595, var(--coral) 65%);
+    border: none; cursor:pointer; position:relative;
+    box-shadow: 0 10px 0 #b8394a, 0 16px 20px rgba(0,0,0,0.45);
+    transform: translateY(0);
+    transition: transform .08s ease, box-shadow .08s ease;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .arcade:active, .arcade.pressed{
+    transform: translateY(8px);
+    box-shadow: 0 2px 0 #b8394a, 0 6px 12px rgba(0,0,0,0.4);
+  }
+  .arcade svg{ width:52px; height:52px; fill:var(--card); filter: drop-shadow(0 2px 2px rgba(0,0,0,0.25)); }
+  .arcade.playing{ animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse{
+    0%,100%{ box-shadow: 0 10px 0 #b8394a, 0 16px 20px rgba(0,0,0,0.45), 0 0 0 0 rgba(63,225,176,0.5); }
+    50%{ box-shadow: 0 10px 0 #b8394a, 0 16px 20px rgba(0,0,0,0.45), 0 0 0 14px rgba(63,225,176,0); }
+  }
+  .taghint{ margin-top:10px; font-size:11px; color: rgba(255,248,236,0.4); letter-spacing:0.5px; text-transform:uppercase; }
+
+  /* quick add-to-playlist under button */
+  .quickadd{
+    margin-top:12px; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+    color:var(--teal); background: rgba(63,225,176,0.1); border:1px solid rgba(63,225,176,0.35);
+    padding:7px 12px; border-radius:999px; cursor:pointer;
+  }
+
+  /* ---------- bottom bar ---------- */
+  .bottombar{
+    flex-shrink:0; padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+  }
+  .addbtn{
+    width:100%; padding:15px; border-radius:16px; border:none; cursor:pointer;
+    background: var(--yellow); color:var(--ink); font-family:'Fredoka',sans-serif; font-weight:600; font-size:16px;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    box-shadow: 0 4px 0 #c9a222;
+  }
+  .addbtn:active{ transform: translateY(3px); box-shadow: 0 1px 0 #c9a222; }
+
+  /* ---------- overlay / modal ---------- */
+  .overlay{
+    position:fixed; inset:0; background: rgba(18,13,36,0.92); backdrop-filter: blur(6px);
+    z-index:20; display:flex; flex-direction:column; opacity:0; pointer-events:none; transition: opacity .2s ease;
+  }
+  .overlay.open{ opacity:1; pointer-events:all; }
+  .modalhead{
+    display:flex; align-items:center; justify-content:space-between; padding: max(16px, env(safe-area-inset-top)) 18px 10px;
+  }
+  .modalhead h2{ font-family:'Fredoka',sans-serif; font-size:19px; margin:0; }
+  .tabs{ display:flex; gap:8px; padding: 4px 18px 14px; }
+  .tab{ flex:1; text-align:center; padding:9px; border-radius:12px; font-weight:600; font-size:13px; background:rgba(255,248,236,0.06); cursor:pointer; }
+  .tab.active{ background:var(--teal); color:var(--ink); }
+  .modalbody{ flex:1; overflow-y:auto; padding: 0 18px 24px; }
+
+  .row{
+    display:flex; align-items:center; gap:10px; padding:12px; border-radius:14px;
+    background: rgba(255,248,236,0.05); border:1px solid var(--line); margin-bottom:8px;
+  }
+  .row .rowplay{
+    width:34px; height:34px; border-radius:50%; background:var(--coral); border:none; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .row .rowplay svg{ width:16px; height:16px; fill:var(--card); }
+  .row .rowinfo{ flex:1; min-width:0; }
+  .row .rowname{ font-weight:600; font-size:14px; background:none; border:none; color:var(--card); width:100%; font-family:'Inter',sans-serif; padding:2px 0; }
+  .row .rowname:focus{ outline:none; border-bottom:1px solid var(--teal); }
+  .row .rowtags{ font-size:11px; color: rgba(255,248,236,0.45); margin-top:2px; }
+  .row .rowbtn{ width:32px; height:32px; border-radius:9px; border:1px solid var(--line); background:transparent; color:var(--card); cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center;}
+  .row .rowbtn.danger{ color:var(--coral); border-color: rgba(255,93,115,0.4); }
+
+  .plchecklist{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .plchip{
+    font-size:11px; padding:5px 10px; border-radius:999px; border:1px solid var(--line); cursor:pointer;
+    background:rgba(255,248,236,0.05); color: rgba(255,248,236,0.7);
+  }
+  .plchip.on{ background:var(--teal); color:var(--ink); border-color:var(--teal); font-weight:600; }
+
+  .newplrow{ display:flex; gap:8px; margin-bottom:14px; }
+  .newplrow input{
+    flex:1; padding:11px 14px; border-radius:12px; border:1px solid var(--line); background:rgba(255,248,236,0.06);
+    color:var(--card); font-size:14px; font-family:'Inter',sans-serif;
+  }
+  .newplrow input::placeholder{ color: rgba(255,248,236,0.35); }
+  .newplrow button{
+    padding:0 18px; border-radius:12px; border:none; background:var(--teal); color:var(--ink); font-weight:700; cursor:pointer;
+  }
+
+  .empty{ text-align:center; padding: 40px 20px; color: rgba(255,248,236,0.5); }
+  .empty .big{ font-family:'Fredoka',sans-serif; font-size:17px; color:var(--card); margin-bottom:6px; }
+
+  /* popover for quick add-to-playlist */
+  .popover{
+    position:fixed; left:50%; bottom:0; transform: translateX(-50%) translateY(100%);
+    width:min(420px, 100%); background:var(--card); color:var(--ink); border-radius:20px 20px 0 0;
+    padding: 18px 18px max(18px, env(safe-area-inset-bottom)); z-index:30; transition: transform .25s ease;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.4);
+  }
+  .popover.open{ transform: translateX(-50%) translateY(0); }
+  .popover h3{ margin:0 0 10px; font-family:'Fredoka',sans-serif; font-size:16px; }
+  .popover .plchip{ color: var(--ink-soft); border-color: rgba(36,28,66,0.2); }
+  .popover .plchip.on{ background:var(--coral); color:var(--card); border-color:var(--coral); }
+  .scrim{ position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:25; opacity:0; pointer-events:none; transition:opacity .2s;}
+  .scrim.open{ opacity:1; pointer-events:all; }
+
+  input[type=file]{ display:none; }
+  audio{ display:none; }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span>Meme Board</div>
+    <button class="iconbtn" id="libraryBtn" aria-label="Library">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+    </button>
+  </div>
+
+  <div class="chiprow" id="chipRow"></div>
+
+  <div class="stage">
+    <div class="stack" id="stack"></div>
+
+    <div class="posrow">
+      <div class="navbtn" id="prevBtn">‹</div>
+      <div class="count mono" id="countLbl">0 / 0</div>
+      <div class="navbtn" id="nextBtn">›</div>
+    </div>
+
+    <div class="buttonzone">
+      <button class="arcade" id="arcadeBtn" aria-label="Play sound">
+        <svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="pauseIcon" viewBox="0 0 24 24" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+      </button>
+      <div class="taghint">tap to play &middot; swipe to skip</div>
+      <div class="quickadd" id="quickAddBtn">＋ add to playlist</div>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    <button class="addbtn" id="addSoundBtn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      Add sounds
+    </button>
+  </div>
+
+  <input type="file" id="fileInput" accept="audio/*,video/*" multiple>
+  <audio id="player"></audio>
+
+  <!-- library / playlist manager overlay -->
+  <div class="overlay" id="overlay">
+    <div class="modalhead">
+      <h2 id="modalTitle">Library</h2>
+      <button class="iconbtn" id="closeOverlay">✕</button>
+    </div>
+    <div class="tabs">
+      <div class="tab active" data-tab="sounds">Sounds</div>
+      <div class="tab" data-tab="playlists">Playlists</div>
+    </div>
+    <div class="modalbody" id="modalBody"></div>
+  </div>
+
+  <div class="scrim" id="scrim"></div>
+  <div class="popover" id="popover">
+    <h3 id="popoverTitle">Add to playlist</h3>
+    <div class="plchecklist" id="popoverList"></div>
+    <div class="newplrow" style="margin-top:14px;">
+      <input type="text" id="popoverNewName" placeholder="New playlist name">
+      <button id="popoverNewBtn">Create</button>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const $ = (sel, el=document) => el.querySelector(sel);
+  const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+
+  let clips = [];        // {id, name, dataUrl, createdAt}
+  let playlists = [];    // {id, name, clipIds:[]}
+  let currentPlaylistId = 'all';
+  let currentIndex = 0;
+  let isPlaying = false;
+
+  const player = $('#player');
+  const stack = $('#stack');
+  const chipRow = $('#chipRow');
+  const arcadeBtn = $('#arcadeBtn');
+  const playIcon = $('#playIcon');
+  const pauseIcon = $('#pauseIcon');
+  const countLbl = $('#countLbl');
+
+  const uid = () => 'id_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+
+  // ---------- portable storage (IndexedDB) ----------
+  // Works in any real browser once this file is hosted on a website —
+  // unlike Claude's artifact-only window.storage API, this needs no backend.
+  const DB_NAME = 'memeBoardDB';
+  const STORE_NAME = 'kv';
+  let dbPromise = null;
+
+  function openDB(){
+    if(dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore(STORE_NAME, { keyPath: 'key' });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return dbPromise;
+  }
+
+  async function safeGet(key){
+    try{
+      const db = await openDB();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).get(key);
+        req.onsuccess = () => resolve(req.result ? req.result.value : null);
+        req.onerror = () => reject(req.error);
+      });
+    }catch(e){ console.error('storage get failed', e); return null; }
+  }
+  async function safeSet(key, value){
+    try{
+      const db = await openDB();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).put({ key, value });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
+      });
+    }catch(e){ console.error('storage set failed', e); alertBanner('Could not save — your browser storage may be full.'); return null; }
+  }
+  async function safeDelete(key){
+    try{
+      const db = await openDB();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).delete(key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
+      });
+    }catch(e){ console.error('storage delete failed', e); return null; }
+  }
+  async function safeList(prefix){
+    try{
+      const db = await openDB();
+      const keys = await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).getAllKeys();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+      return prefix ? keys.filter(k => typeof k === 'string' && k.startsWith(prefix)) : keys;
+    }catch(e){ console.error('storage list failed', e); return []; }
+  }
+
+  async function loadAll(){
+    const clipKeys = await safeList('clip:');
+    clips = [];
+    for(const k of clipKeys){
+      const v = await safeGet(k);
+      if(v){ try{ clips.push(JSON.parse(v)); }catch(e){} }
+    }
+    clips.sort((a,b)=> (a.createdAt||0) - (b.createdAt||0));
+
+    const plKeys = await safeList('playlist:');
+    playlists = [];
+    for(const k of plKeys){
+      const v = await safeGet(k);
+      if(v){ try{ playlists.push(JSON.parse(v)); }catch(e){} }
+    }
+
+    const state = await safeGet('ui-state');
+    if(state){
+      try{
+        const s = JSON.parse(state);
+        currentPlaylistId = s.currentPlaylistId || 'all';
+        currentIndex = s.currentIndex || 0;
+      }catch(e){}
+    }
+    if(currentPlaylistId !== 'all' && !playlists.find(p=>p.id===currentPlaylistId)){
+      currentPlaylistId = 'all';
+    }
+    render();
+  }
+
+  function saveUiState(){
+    safeSet('ui-state', JSON.stringify({currentPlaylistId, currentIndex}));
+  }
+
+  function activeClips(){
+    if(currentPlaylistId === 'all') return clips;
+    const pl = playlists.find(p=>p.id===currentPlaylistId);
+    if(!pl) return clips;
+    return pl.clipIds.map(id => clips.find(c=>c.id===id)).filter(Boolean);
+  }
+
+  function currentClip(){
+    const list = activeClips();
+    if(list.length===0) return null;
+    if(currentIndex >= list.length) currentIndex = list.length - 1;
+    if(currentIndex < 0) currentIndex = 0;
+    return list[currentIndex];
+  }
+
+  function render(){
+    renderChips();
+    renderStack();
+    saveUiState();
+  }
+
+  function renderChips(){
+    chipRow.innerHTML = '';
+    const all = document.createElement('div');
+    all.className = 'chip' + (currentPlaylistId==='all' ? ' active':'');
+    all.textContent = 'All Sounds';
+    all.onclick = () => { currentPlaylistId='all'; currentIndex=0; stopAudio(); render(); };
+    chipRow.appendChild(all);
+
+    playlists.forEach(pl => {
+      const c = document.createElement('div');
+      c.className = 'chip' + (currentPlaylistId===pl.id ? ' active':'');
+      c.textContent = pl.name;
+      c.onclick = () => { currentPlaylistId=pl.id; currentIndex=0; stopAudio(); render(); };
+      chipRow.appendChild(c);
+    });
+
+    const add = document.createElement('div');
+    add.className = 'chip addnew';
+    add.textContent = '+ New';
+    add.onclick = () => openLibrary('playlists');
+    chipRow.appendChild(add);
+  }
+
+  function cardHtml(clip, cls){
+    if(!clip){
+      return `<div class="card empty ${cls}"><div class="name">No sounds here yet</div><div class="len">tap "Add sounds" below</div></div>`;
+    }
+    return `<div class="card ${cls}"><div class="name">${escapeHtml(clip.name)}</div></div>`;
+  }
+
+  function escapeHtml(s){
+    return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function renderStack(){
+    const list = activeClips();
+    stack.innerHTML = '';
+    if(list.length === 0){
+      stack.insertAdjacentHTML('beforeend', cardHtml(null, 'curr'));
+      countLbl.textContent = '0 / 0';
+      setPlayingVisual(false);
+      return;
+    }
+    const prev = list[(currentIndex - 1 + list.length) % list.length];
+    const curr = list[currentIndex];
+    const next = list[(currentIndex + 1) % list.length];
+    if(list.length > 2) stack.insertAdjacentHTML('beforeend', cardHtml(prev, 'prev side'));
+    if(list.length > 1) stack.insertAdjacentHTML('beforeend', cardHtml(next, 'next side'));
+    stack.insertAdjacentHTML('beforeend', cardHtml(curr, 'curr'));
+    countLbl.textContent = `${currentIndex+1} / ${list.length}`;
+  }
+
+  function stopAudio(){
+    player.pause();
+    player.currentTime = 0;
+    isPlaying = false;
+    setPlayingVisual(false);
+  }
+
+  function setPlayingVisual(playing){
+    isPlaying = playing;
+    arcadeBtn.classList.toggle('playing', playing);
+    playIcon.style.display = playing ? 'none' : '';
+    pauseIcon.style.display = playing ? '' : 'none';
+  }
+
+  function playCurrent(){
+    const clip = currentClip();
+    if(!clip){ alertBanner('Add a sound first!'); return; }
+    if(player.src !== clip.dataUrl){
+      player.src = clip.dataUrl;
+    }
+    player.currentTime = 0;
+    player.play().then(()=> setPlayingVisual(true)).catch((err)=>{
+      console.error('playback failed', err);
+      alertBanner('Could not play that clip — try re-adding the file.');
+      setPlayingVisual(false);
+    });
+  }
+
+  arcadeBtn.addEventListener('click', () => {
+    if(isPlaying){ stopAudio(); }
+    else{ playCurrent(); }
+  });
+  player.addEventListener('ended', () => setPlayingVisual(false));
+
+  function goTo(delta){
+    const list = activeClips();
+    if(list.length === 0) return;
+    currentIndex = (currentIndex + delta + list.length) % list.length;
+    stopAudio();
+    renderStack();
+    saveUiState();
+  }
+  $('#prevBtn').onclick = () => goTo(-1);
+  $('#nextBtn').onclick = () => goTo(1);
+
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'ArrowLeft') goTo(-1);
+    if(e.key === 'ArrowRight') goTo(1);
+    if(e.key === ' '){ e.preventDefault(); isPlaying ? stopAudio() : playCurrent(); }
+  });
+
+  // swipe handling
+  let touchStartX = null, touchStartY = null, dragging = false;
+  stack.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; dragging = true;
+  }, {passive:true});
+  stack.addEventListener('touchend', (e) => {
+    if(!dragging || touchStartX===null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if(Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)){
+      goTo(dx < 0 ? 1 : -1);
+    }
+    dragging = false; touchStartX = null;
+  });
+  // mouse drag fallback (desktop)
+  let mouseDownX = null;
+  stack.addEventListener('mousedown', (e) => { mouseDownX = e.clientX; });
+  stack.addEventListener('mouseup', (e) => {
+    if(mouseDownX===null) return;
+    const dx = e.clientX - mouseDownX;
+    if(Math.abs(dx) > 40) goTo(dx < 0 ? 1 : -1);
+    mouseDownX = null;
+  });
+
+  // ---------- add sounds ----------
+  $('#addSoundBtn').onclick = () => $('#fileInput').click();
+  $('#fileInput').addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files || []);
+    for(const file of files){
+      await addClipFromFile(file);
+    }
+    e.target.value = '';
+    render();
+  });
+
+  function readFileAsDataUrl(file){
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(file);
+    });
+  }
+
+  async function addClipFromFile(file){
+    if(file.size > 25 * 1024 * 1024){
+      alertBanner(`"${file.name}" is too big (keep clips under ~25MB).`);
+      return;
+    }
+    try{
+      const dataUrl = await readFileAsDataUrl(file);
+      const clip = { id: uid(), name: file.name.replace(/\.[^/.]+$/, ''), dataUrl, createdAt: Date.now() };
+      const res = await safeSet('clip:' + clip.id, JSON.stringify(clip));
+      if(res) clips.push(clip);
+    }catch(e){ console.error(e); }
+  }
+
+  function alertBanner(msg){
+    const b = document.createElement('div');
+    b.textContent = msg;
+    b.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#241C42;color:#FFF8EC;padding:10px 16px;border-radius:12px;font-size:13px;z-index:99;box-shadow:0 6px 20px rgba(0,0,0,0.4);max-width:88%;text-align:center;';
+    document.body.appendChild(b);
+    setTimeout(()=> b.remove(), 2600);
+  }
+
+  // ---------- library overlay ----------
+  const overlay = $('#overlay');
+  const modalBody = $('#modalBody');
+  const modalTitle = $('#modalTitle');
+  let activeTab = 'sounds';
+
+  function openLibrary(tab){
+    activeTab = tab || 'sounds';
+    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === activeTab));
+    overlay.classList.add('open');
+    renderModal();
+  }
+  $('#libraryBtn').onclick = () => openLibrary('sounds');
+  $('#closeOverlay').onclick = () => overlay.classList.remove('open');
+  $$('.tab').forEach(t => t.onclick = () => { activeTab = t.dataset.tab; $$('.tab').forEach(x=>x.classList.toggle('active', x===t)); renderModal(); });
+
+  function renderModal(){
+    modalTitle.textContent = activeTab === 'sounds' ? 'Sounds' : 'Playlists';
+    if(activeTab === 'sounds') renderSoundsTab();
+    else renderPlaylistsTab();
+  }
+
+  function renderSoundsTab(){
+    if(clips.length === 0){
+      modalBody.innerHTML = `<div class="empty"><div class="big">No sounds yet</div>Tap "Add sounds" to upload your first clip.</div>`;
+      return;
+    }
+    modalBody.innerHTML = '';
+    clips.forEach(clip => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const memberOf = playlists.filter(p => p.clipIds.includes(clip.id));
+      row.innerHTML = `
+        <button class="rowplay" aria-label="Preview"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+        <div class="rowinfo">
+          <input class="rowname" value="${escapeHtml(clip.name)}">
+          <div class="rowtags">${memberOf.length ? memberOf.map(p=>p.name).join(', ') : 'Not in any playlist'}</div>
+        </div>
+        <button class="rowbtn" data-act="tag">☰</button>
+        <button class="rowbtn danger" data-act="del">🗑</button>
+      `;
+      row.querySelector('.rowplay').onclick = () => {
+        const a = new Audio(clip.dataUrl); a.play().catch(()=>{});
+      };
+      const nameInput = row.querySelector('.rowname');
+      nameInput.addEventListener('change', async () => {
+        clip.name = nameInput.value.trim() || clip.name;
+        await safeSet('clip:' + clip.id, JSON.stringify(clip));
+        render();
+      });
+      row.querySelector('[data-act="del"]').onclick = async () => {
+        await safeDelete('clip:' + clip.id);
+        playlists.forEach(p => { p.clipIds = p.clipIds.filter(id => id !== clip.id); safeSet('playlist:'+p.id, JSON.stringify(p)); });
+        clips = clips.filter(c => c.id !== clip.id);
+        renderSoundsTab();
+        render();
+      };
+      row.querySelector('[data-act="tag"]').onclick = () => openQuickAdd(clip);
+      modalBody.appendChild(row);
+    });
+  }
+
+  function renderPlaylistsTab(){
+    modalBody.innerHTML = '';
+    const newRow = document.createElement('div');
+    newRow.className = 'newplrow';
+    newRow.innerHTML = `<input type="text" placeholder="New playlist name" id="plNameInput"><button id="plCreateBtn">Create</button>`;
+    modalBody.appendChild(newRow);
+    $('#plCreateBtn').onclick = async () => {
+      const input = $('#plNameInput');
+      const name = input.value.trim();
+      if(!name) return;
+      const pl = { id: uid(), name, clipIds: [] };
+      await safeSet('playlist:' + pl.id, JSON.stringify(pl));
+      playlists.push(pl);
+      input.value = '';
+      renderPlaylistsTab();
+      render();
+    };
+
+    if(playlists.length === 0){
+      modalBody.insertAdjacentHTML('beforeend', `<div class="empty"><div class="big">No playlists yet</div>Create one above to group your favorite sounds.</div>`);
+      return;
+    }
+
+    playlists.forEach(pl => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = `
+        <div class="rowinfo">
+          <input class="rowname" value="${escapeHtml(pl.name)}">
+          <div class="rowtags">${pl.clipIds.length} sound${pl.clipIds.length===1?'':'s'}</div>
+        </div>
+        <button class="rowbtn danger" data-act="del">🗑</button>
+      `;
+      const nameInput = row.querySelector('.rowname');
+      nameInput.addEventListener('change', async () => {
+        pl.name = nameInput.value.trim() || pl.name;
+        await safeSet('playlist:' + pl.id, JSON.stringify(pl));
+        render();
+      });
+      row.querySelector('[data-act="del"]').onclick = async () => {
+        await safeDelete('playlist:' + pl.id);
+        playlists = playlists.filter(p => p.id !== pl.id);
+        if(currentPlaylistId === pl.id){ currentPlaylistId = 'all'; currentIndex = 0; }
+        renderPlaylistsTab();
+        render();
+      };
+      modalBody.appendChild(row);
+    });
+  }
+
+  // ---------- quick add-to-playlist popover ----------
+  const scrim = $('#scrim');
+  const popover = $('#popover');
+  let popoverClip = null;
+
+  function openQuickAdd(clip){
+    popoverClip = clip;
+    renderPopoverList();
+    scrim.classList.add('open');
+    popover.classList.add('open');
+  }
+  function closePopover(){
+    scrim.classList.remove('open');
+    popover.classList.remove('open');
+    popoverClip = null;
+  }
+  scrim.onclick = closePopover;
+
+  function renderPopoverList(){
+    const list = $('#popoverList');
+    list.innerHTML = '';
+    if(playlists.length === 0){
+      list.innerHTML = `<div style="font-size:12px;color:var(--ink-soft);">No playlists yet — create one below.</div>`;
+    }
+    playlists.forEach(pl => {
+      const on = pl.clipIds.includes(popoverClip.id);
+      const chip = document.createElement('div');
+      chip.className = 'plchip' + (on ? ' on':'');
+      chip.textContent = pl.name;
+      chip.onclick = async () => {
+        if(on) pl.clipIds = pl.clipIds.filter(id => id !== popoverClip.id);
+        else pl.clipIds.push(popoverClip.id);
+        await safeSet('playlist:' + pl.id, JSON.stringify(pl));
+        renderPopoverList();
+        renderSoundsTab();
+        renderChips();
+      };
+      list.appendChild(chip);
+    });
+  }
+
+  $('#popoverNewBtn').onclick = async () => {
+    const input = $('#popoverNewName');
+    const name = input.value.trim();
+    if(!name) return;
+    const pl = { id: uid(), name, clipIds: popoverClip ? [popoverClip.id] : [] };
+    await safeSet('playlist:' + pl.id, JSON.stringify(pl));
+    playlists.push(pl);
+    input.value = '';
+    if(popoverClip){ renderPopoverList(); renderSoundsTab(); renderChips(); }
+  };
+
+  $('#quickAddBtn').onclick = () => {
+    const clip = currentClip();
+    if(!clip){ alertBanner('Add a sound first!'); return; }
+    openQuickAdd(clip);
+  };
+
+  loadAll();
+})();
+</script>
+</body>
+</html>
