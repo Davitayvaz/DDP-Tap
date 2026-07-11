@@ -43,7 +43,6 @@
   .mono{ font-family:'JetBrains Mono', monospace; }
   .fredoka{ font-family:'Fredoka', sans-serif; }
 
-  /* ---------- top bar ---------- */
   .topbar{
     display:flex; align-items:center; justify-content:space-between;
     padding: max(14px, env(safe-area-inset-top)) 16px 6px;
@@ -61,7 +60,6 @@
   }
   .iconbtn:active{ background: rgba(255,248,236,0.14); }
 
-  /* ---------- playlist chips ---------- */
   .chiprow{
     display:flex; gap:8px; padding: 6px 16px 14px; overflow-x:auto;
     flex-shrink:0; scrollbar-width:none;
@@ -75,7 +73,6 @@
   .chip.active{ background:var(--yellow); color:var(--ink); border-color:var(--yellow); }
   .chip.addnew{ color:var(--teal); border-style:dashed; }
 
-  /* ---------- stage ---------- */
   .stage{
     flex:1; position:relative; display:flex; flex-direction:column;
     align-items:center; justify-content:flex-start; padding-top:6px; min-height:0;
@@ -112,7 +109,6 @@
   .navbtn:active{ background:rgba(255,248,236,0.16); }
   .posrow .count{ font-size:12px; color: rgba(255,248,236,0.6); min-width:56px; text-align:center; }
 
-  /* ---------- big arcade button ---------- */
   .buttonzone{ display:flex; flex-direction:column; align-items:center; margin-top: 18px; }
   .arcade{
     width:150px; height:150px; border-radius:50%;
@@ -135,14 +131,12 @@
   }
   .taghint{ margin-top:10px; font-size:11px; color: rgba(255,248,236,0.4); letter-spacing:0.5px; text-transform:uppercase; }
 
-  /* quick add-to-playlist under button */
   .quickadd{
     margin-top:12px; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
     color:var(--teal); background: rgba(63,225,176,0.1); border:1px solid rgba(63,225,176,0.35);
     padding:7px 12px; border-radius:999px; cursor:pointer;
   }
 
-  /* ---------- bottom bar ---------- */
   .bottombar{
     flex-shrink:0; padding: 12px 16px max(16px, env(safe-area-inset-bottom));
   }
@@ -154,7 +148,6 @@
   }
   .addbtn:active{ transform: translateY(3px); box-shadow: 0 1px 0 #c9a222; }
 
-  /* ---------- overlay / modal ---------- */
   .overlay{
     position:fixed; inset:0; background: rgba(18,13,36,0.92); backdrop-filter: blur(6px);
     z-index:20; display:flex; flex-direction:column; opacity:0; pointer-events:none; transition: opacity .2s ease;
@@ -205,7 +198,6 @@
   .empty{ text-align:center; padding: 40px 20px; color: rgba(255,248,236,0.5); }
   .empty .big{ font-family:'Fredoka',sans-serif; font-size:17px; color:var(--card); margin-bottom:6px; }
 
-  /* popover for quick add-to-playlist */
   .popover{
     position:fixed; left:50%; bottom:0; transform: translateX(-50%) translateY(100%);
     width:min(420px, 100%); background:var(--card); color:var(--ink); border-radius:20px 20px 0 0;
@@ -271,7 +263,6 @@
   <input type="file" id="fileInput" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac,video/*,.mp4,.mov" multiple>
   <audio id="player"></audio>
 
-  <!-- library / playlist manager overlay -->
   <div class="overlay" id="overlay">
     <div class="modalhead">
       <h2 id="modalTitle">Library</h2>
@@ -299,8 +290,8 @@
   const $ = (sel, el=document) => el.querySelector(sel);
   const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
 
-  let clips = [];        // {id, name, dataUrl, createdAt}
-  let playlists = [];    // {id, name, clipIds:[]}
+  let clips = [];
+  let playlists = [];
   let currentPlaylistId = 'all';
   let currentIndex = 0;
   let isPlaying = false;
@@ -315,9 +306,6 @@
 
   const uid = () => 'id_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
 
-  // ---------- portable storage (IndexedDB) ----------
-  // Works in any real browser once this file is hosted on a website —
-  // unlike Claude's artifact-only window.storage API, this needs no backend.
   const DB_NAME = 'memeBoardDB';
   const STORE_NAME = 'kv';
   let dbPromise = null;
@@ -381,14 +369,37 @@
     }catch(e){ console.error('storage list failed', e); return []; }
   }
 
+  async function loadSharedLibrary(){
+    try{
+      const res = await fetch('sounds-manifest.json', { cache: 'no-store' });
+      if(!res.ok) return [];
+      const list = await res.json();
+      if(!Array.isArray(list)) return [];
+      return list.map(item => ({
+        id: 'shared_' + item.id,
+        name: item.name,
+        src: item.file,
+        shared: true,
+        createdAt: 0
+      }));
+    }catch(e){
+      console.warn('No shared sounds-manifest.json found', e);
+      return [];
+    }
+  }
+
   async function loadAll(){
+    const sharedClips = await loadSharedLibrary();
+
     const clipKeys = await safeList('clip:');
-    clips = [];
+    let personalClips = [];
     for(const k of clipKeys){
       const v = await safeGet(k);
-      if(v){ try{ clips.push(JSON.parse(v)); }catch(e){} }
+      if(v){ try{ personalClips.push(JSON.parse(v)); }catch(e){} }
     }
-    clips.sort((a,b)=> (a.createdAt||0) - (b.createdAt||0));
+    personalClips.sort((a,b)=> (a.createdAt||0) - (b.createdAt||0));
+
+    clips = [...sharedClips, ...personalClips];
 
     const plKeys = await safeList('playlist:');
     playlists = [];
@@ -502,11 +513,14 @@
     pauseIcon.style.display = playing ? '' : 'none';
   }
 
+  let loadedClipId = null;
   function playCurrent(){
     const clip = currentClip();
     if(!clip){ alertBanner('Add a sound first!'); return; }
-    if(player.src !== clip.dataUrl){
-      player.src = clip.dataUrl;
+    const src = clip.dataUrl || clip.src;
+    if(loadedClipId !== clip.id){
+      player.src = src;
+      loadedClipId = clip.id;
     }
     player.currentTime = 0;
     player.play().then(()=> setPlayingVisual(true)).catch((err)=>{
@@ -539,7 +553,6 @@
     if(e.key === ' '){ e.preventDefault(); isPlaying ? stopAudio() : playCurrent(); }
   });
 
-  // swipe handling
   let touchStartX = null, touchStartY = null, dragging = false;
   stack.addEventListener('touchstart', (e) => {
     touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; dragging = true;
@@ -553,7 +566,6 @@
     }
     dragging = false; touchStartX = null;
   });
-  // mouse drag fallback (desktop)
   let mouseDownX = null;
   stack.addEventListener('mousedown', (e) => { mouseDownX = e.clientX; });
   stack.addEventListener('mouseup', (e) => {
@@ -563,7 +575,6 @@
     mouseDownX = null;
   });
 
-  // ---------- add sounds ----------
   $('#addSoundBtn').onclick = () => $('#fileInput').click();
   $('#fileInput').addEventListener('change', async (e) => {
     const files = Array.from(e.target.files || []);
@@ -604,7 +615,6 @@
     setTimeout(()=> b.remove(), 2600);
   }
 
-  // ---------- library overlay ----------
   const overlay = $('#overlay');
   const modalBody = $('#modalBody');
   const modalTitle = $('#modalTitle');
@@ -636,31 +646,36 @@
       const row = document.createElement('div');
       row.className = 'row';
       const memberOf = playlists.filter(p => p.clipIds.includes(clip.id));
+      const isShared = !!clip.shared;
       row.innerHTML = `
         <button class="rowplay" aria-label="Preview"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
         <div class="rowinfo">
-          <input class="rowname" value="${escapeHtml(clip.name)}">
+          ${isShared
+            ? `<div class="rowname" style="padding:2px 0;">${escapeHtml(clip.name)} <span class="mono" style="font-size:10px;color:var(--teal);">&middot; shared</span></div>`
+            : `<input class="rowname" value="${escapeHtml(clip.name)}">`}
           <div class="rowtags">${memberOf.length ? memberOf.map(p=>p.name).join(', ') : 'Not in any playlist'}</div>
         </div>
         <button class="rowbtn" data-act="tag">☰</button>
-        <button class="rowbtn danger" data-act="del">🗑</button>
+        ${isShared ? '' : '<button class="rowbtn danger" data-act="del">🗑</button>'}
       `;
       row.querySelector('.rowplay').onclick = () => {
-        const a = new Audio(clip.dataUrl); a.play().catch(()=>{});
+        const a = new Audio(clip.dataUrl || clip.src); a.play().catch(()=>{});
       };
-      const nameInput = row.querySelector('.rowname');
-      nameInput.addEventListener('change', async () => {
-        clip.name = nameInput.value.trim() || clip.name;
-        await safeSet('clip:' + clip.id, JSON.stringify(clip));
-        render();
-      });
-      row.querySelector('[data-act="del"]').onclick = async () => {
-        await safeDelete('clip:' + clip.id);
-        playlists.forEach(p => { p.clipIds = p.clipIds.filter(id => id !== clip.id); safeSet('playlist:'+p.id, JSON.stringify(p)); });
-        clips = clips.filter(c => c.id !== clip.id);
-        renderSoundsTab();
-        render();
-      };
+      if(!isShared){
+        const nameInput = row.querySelector('.rowname');
+        nameInput.addEventListener('change', async () => {
+          clip.name = nameInput.value.trim() || clip.name;
+          await safeSet('clip:' + clip.id, JSON.stringify(clip));
+          render();
+        });
+        row.querySelector('[data-act="del"]').onclick = async () => {
+          await safeDelete('clip:' + clip.id);
+          playlists.forEach(p => { p.clipIds = p.clipIds.filter(id => id !== clip.id); safeSet('playlist:'+p.id, JSON.stringify(p)); });
+          clips = clips.filter(c => c.id !== clip.id);
+          renderSoundsTab();
+          render();
+        };
+      }
       row.querySelector('[data-act="tag"]').onclick = () => openQuickAdd(clip);
       modalBody.appendChild(row);
     });
@@ -716,7 +731,6 @@
     });
   }
 
-  // ---------- quick add-to-playlist popover ----------
   const scrim = $('#scrim');
   const popover = $('#popover');
   let popoverClip = null;
