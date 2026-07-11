@@ -306,6 +306,10 @@
 
   const uid = () => 'id_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
 
+  const GH_OWNER = 'Davitayvaz';
+  const GH_REPO = 'DDP-Tap';
+  const GH_SOUNDS_FOLDER = 'Sounds';
+
   const DB_NAME = 'memeBoardDB';
   const STORE_NAME = 'kv';
   let dbPromise = null;
@@ -370,20 +374,34 @@
   }
 
   async function loadSharedLibrary(){
+    const audioExt = /\.(mp3|wav|m4a|ogg|aac|flac)$/i;
     try{
-      const res = await fetch('sounds-manifest.json', { cache: 'no-store' });
-      if(!res.ok) return [];
+      const res = await fetch(
+        `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_SOUNDS_FOLDER}`,
+        { cache: 'no-store' }
+      );
+      if(!res.ok) throw new Error('GitHub API error ' + res.status);
       const list = await res.json();
-      if(!Array.isArray(list)) return [];
-      return list.map(item => ({
-        id: 'shared_' + item.id,
-        name: item.name,
-        src: item.file,
-        shared: true,
-        createdAt: 0
-      }));
+      if(!Array.isArray(list)) throw new Error('Unexpected response shape');
+
+      const shared = list
+        .filter(item => item.type === 'file' && audioExt.test(item.name))
+        .map(item => ({
+          id: 'shared_' + item.name.replace(/[^a-zA-Z0-9]/g, '_'),
+          name: item.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim(),
+          src: item.download_url,
+          shared: true,
+          createdAt: 0
+        }));
+
+      await safeSet('shared-cache', JSON.stringify(shared));
+      return shared;
     }catch(e){
-      console.warn('No shared sounds-manifest.json found', e);
+      console.warn('Could not reach GitHub for shared sounds, trying cache', e);
+      const cached = await safeGet('shared-cache');
+      if(cached){
+        try{ return JSON.parse(cached); }catch(_){}
+      }
       return [];
     }
   }
