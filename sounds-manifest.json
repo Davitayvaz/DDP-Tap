@@ -1,4 +1,4 @@
 [
-  { "id": "balright1", "name": "Bal Right", "file": "sounds/balright.mp3" },
-  { "id": "balright2", "name": "Bal Right (Voicemod)", "file": "sounds/balright-made-with-Voicemod.mp3" }
+  { "id": "balright1", "name": "Bal Right", "file": "Sounds/balright.mp3" },
+  { "id": "balright2", "name": "Bal Right (Voicemod)", "file": "Sounds/balright-made-with-Voicemod.mp3" }
 ]
