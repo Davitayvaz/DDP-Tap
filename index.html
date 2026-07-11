@@ -169,6 +169,15 @@
   }
   .speedchip.on{ background:var(--yellow); color:var(--ink); border-color:var(--yellow); font-weight:700; }
 
+  .speedlock{
+    width:28px; height:28px; border-radius:50%; border:1px solid var(--line);
+    background:rgba(255,248,236,0.06); color: rgba(255,248,236,0.6); display:flex; align-items:center; justify-content:center;
+    cursor:pointer; flex-shrink:0;
+  }
+  .speedlock svg{ fill:currentColor; }
+  .speedlock.on{ background:var(--yellow); color:var(--ink); border-color:var(--yellow); }
+  .speedlockhint{ font-size:10px; letter-spacing:0.3px; color: rgba(255,248,236,0.35); text-transform:uppercase; }
+
   .focusOverlay{
     position:fixed; inset:0; z-index:60;
     background:
@@ -275,6 +284,31 @@
   .scrim{ position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:25; opacity:0; pointer-events:none; transition:opacity .2s;}
   .scrim.open{ opacity:1; pointer-events:all; }
 
+  .plmembers{ margin: 4px 0 10px; padding-left:6px; border-left:2px solid rgba(255,248,236,0.12); }
+  .plmember{ display:flex; align-items:center; gap:8px; padding:7px 6px; font-size:12.5px; }
+  .plmember .pmname{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color: rgba(255,248,236,0.85); }
+  .plmember .pmplay{ width:22px; height:22px; border-radius:50%; background:rgba(63,225,176,0.18); border:none; color:var(--teal); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
+  .plmember .pmplay svg{ width:10px; height:10px; fill:currentColor; }
+  .plmember .pmremove{ width:22px; height:22px; border-radius:50%; background:transparent; border:1px solid var(--line); color: rgba(255,248,236,0.5); cursor:pointer; flex-shrink:0; font-size:12px; line-height:1; display:flex; align-items:center; justify-content:center; }
+  .plmembersempty{ font-size:12px; color: var(--ink-soft); padding:4px 6px 10px; font-style:italic; }
+
+  .confirmScrim{
+    position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:70; opacity:0; pointer-events:none; transition:opacity .18s;
+  }
+  .confirmScrim.open{ opacity:1; pointer-events:all; }
+  .confirmBox{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%) scale(0.94);
+    width:min(320px, 86vw); background:var(--card); color:var(--ink); border-radius:18px;
+    padding:20px; z-index:75; opacity:0; pointer-events:none; transition: opacity .18s ease, transform .18s ease;
+    box-shadow:0 20px 50px rgba(0,0,0,0.5);
+  }
+  .confirmBox.open{ opacity:1; pointer-events:all; transform:translate(-50%,-50%) scale(1); }
+  .confirmMsg{ font-size:14px; line-height:1.4; margin-bottom:16px; }
+  .confirmBtns{ display:flex; gap:10px; }
+  .confirmBtn{ flex:1; padding:11px; border-radius:12px; border:none; font-weight:700; font-size:14px; cursor:pointer; font-family:'Inter',sans-serif; }
+  .confirmBtn.cancel{ background: rgba(36,28,66,0.08); color:var(--ink); }
+  .confirmBtn.delete{ background:var(--coral); color:var(--card); }
+
   input[type=file]{
     position:absolute;
     width:1px; height:1px;
@@ -325,9 +359,14 @@
           <div class="speedstep" id="speedDownBtn" aria-label="Slower">−</div>
           <input type="range" class="speedslider" id="speedSlider" min="0.25" max="5" step="0.05" value="1">
           <div class="speedstep" id="speedUpBtn" aria-label="Faster">+</div>
+          <div class="speedlock" id="speedLockBtn" aria-label="Lock speed" title="Lock speed across sounds">
+            <svg id="lockClosedIcon" viewBox="0 0 24 24" width="15" height="15"><path d="M6 10V8a6 6 0 0 1 12 0v2h1a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9a1 1 0 0 1 1-1h1zm2 0h8V8a4 4 0 0 0-8 0v2z"/></svg>
+            <svg id="lockOpenIcon" viewBox="0 0 24 24" width="15" height="15" style="display:none"><path d="M6 10V8a6 6 0 0 1 11.6-2.2 1 1 0 1 1-1.86.74A4 4 0 0 0 8 8v2h9a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9a1 1 0 0 1 1-1h1z"/></svg>
+          </div>
         </div>
         <div class="speedval mono" id="speedVal" title="Tap to reset to 1x">1.00x</div>
         <div class="speedpresets" id="speedPresets"></div>
+        <div class="speedlockhint" id="speedLockHint">unlocked &middot; resets to 1x on skip</div>
       </div>
     </div>
   </div>
@@ -373,6 +412,15 @@
     </div>
   </div>
 
+  <div class="confirmScrim" id="confirmScrim"></div>
+  <div class="confirmBox" id="confirmBox">
+    <div class="confirmMsg" id="confirmMsg"></div>
+    <div class="confirmBtns">
+      <button class="confirmBtn cancel" id="confirmCancelBtn">Cancel</button>
+      <button class="confirmBtn delete" id="confirmOkBtn">Delete</button>
+    </div>
+  </div>
+
 <script>
 (function(){
   const $ = (sel, el=document) => el.querySelector(sel);
@@ -380,10 +428,12 @@
 
   let clips = [];
   let playlists = [];
+  let expandedPlaylists = new Set();
   let currentPlaylistId = 'all';
   let currentIndex = 0;
   let isPlaying = false;
   let playbackRate = 1;
+  let speedLocked = true;
 
   const player = $('#player');
   const stack = $('#stack');
@@ -395,6 +445,10 @@
   const speedSlider = $('#speedSlider');
   const speedVal = $('#speedVal');
   const speedPresets = $('#speedPresets');
+  const speedLockBtn = $('#speedLockBtn');
+  const speedLockHint = $('#speedLockHint');
+  const lockClosedIcon = $('#lockClosedIcon');
+  const lockOpenIcon = $('#lockOpenIcon');
   const focusOverlay = $('#focusOverlay');
   const focusBtn = $('#focusBtn');
   const focusName = $('#focusName');
@@ -533,17 +587,21 @@
         if(typeof s.playbackRate === 'number' && !isNaN(s.playbackRate)){
           playbackRate = s.playbackRate;
         }
+        if(typeof s.speedLocked === 'boolean'){
+          speedLocked = s.speedLocked;
+        }
       }catch(e){}
     }
     if(currentPlaylistId !== 'all' && !playlists.find(p=>p.id===currentPlaylistId)){
       currentPlaylistId = 'all';
     }
     applySpeed(playbackRate, false);
+    applyLockVisual();
     render();
   }
 
   function saveUiState(){
-    safeSet('ui-state', JSON.stringify({currentPlaylistId, currentIndex, playbackRate}));
+    safeSet('ui-state', JSON.stringify({currentPlaylistId, currentIndex, playbackRate, speedLocked}));
   }
 
   function activeClips(){
@@ -572,14 +630,14 @@
     const all = document.createElement('div');
     all.className = 'chip' + (currentPlaylistId==='all' ? ' active':'');
     all.textContent = 'All Sounds';
-    all.onclick = () => { currentPlaylistId='all'; currentIndex=0; stopAudio(); render(); };
+    all.onclick = () => { currentPlaylistId='all'; currentIndex=0; stopAudio(); resetSpeedOnSwitch(); render(); };
     chipRow.appendChild(all);
 
     playlists.forEach(pl => {
       const c = document.createElement('div');
       c.className = 'chip' + (currentPlaylistId===pl.id ? ' active':'');
       c.textContent = pl.name;
-      c.onclick = () => { currentPlaylistId=pl.id; currentIndex=0; stopAudio(); render(); };
+      c.onclick = () => { currentPlaylistId=pl.id; currentIndex=0; stopAudio(); resetSpeedOnSwitch(); render(); };
       chipRow.appendChild(c);
     });
 
@@ -675,6 +733,24 @@
   $('#speedUpBtn').onclick = () => applySpeed(playbackRate + 0.25);
   speedVal.onclick = () => applySpeed(1);
 
+  function applyLockVisual(){
+    speedLockBtn.classList.toggle('on', speedLocked);
+    lockClosedIcon.style.display = speedLocked ? '' : 'none';
+    lockOpenIcon.style.display = speedLocked ? 'none' : '';
+    speedLockHint.textContent = speedLocked
+      ? 'locked · speed carries over between sounds'
+      : 'unlocked · resets to 1x on skip';
+  }
+  speedLockBtn.onclick = () => {
+    speedLocked = !speedLocked;
+    applyLockVisual();
+    saveUiState();
+  };
+
+  function resetSpeedOnSwitch(){
+    if(!speedLocked) applySpeed(1);
+  }
+
   let loadedClipId = null;
   function playCurrent(){
     const clip = currentClip();
@@ -707,6 +783,7 @@
     if(list.length === 0) return;
     currentIndex = (currentIndex + delta + list.length) % list.length;
     stopAudio();
+    resetSpeedOnSwitch();
     renderStack();
     saveUiState();
   }
@@ -891,6 +968,8 @@
           render();
         });
         row.querySelector('[data-act="del"]').onclick = async () => {
+          const ok = await confirmDelete(`Delete "${clip.name}"? This can't be undone.`);
+          if(!ok) return;
           await safeDelete('clip:' + clip.id);
           playlists.forEach(p => { p.clipIds = p.clipIds.filter(id => id !== clip.id); safeSet('playlist:'+p.id, JSON.stringify(p)); });
           clips = clips.filter(c => c.id !== clip.id);
@@ -927,6 +1006,7 @@
     }
 
     playlists.forEach(pl => {
+      const isOpen = expandedPlaylists.has(pl.id);
       const row = document.createElement('div');
       row.className = 'row';
       row.innerHTML = `
@@ -934,6 +1014,7 @@
           <input class="rowname" value="${escapeHtml(pl.name)}">
           <div class="rowtags">${pl.clipIds.length} sound${pl.clipIds.length===1?'':'s'}</div>
         </div>
+        <button class="rowbtn" data-act="expand" aria-label="View sounds in playlist">${isOpen ? '▴' : '▾'}</button>
         <button class="rowbtn danger" data-act="del">🗑</button>
       `;
       const nameInput = row.querySelector('.rowname');
@@ -942,20 +1023,84 @@
         await safeSet('playlist:' + pl.id, JSON.stringify(pl));
         render();
       });
+      row.querySelector('[data-act="expand"]').onclick = () => {
+        if(isOpen) expandedPlaylists.delete(pl.id); else expandedPlaylists.add(pl.id);
+        renderPlaylistsTab();
+      };
       row.querySelector('[data-act="del"]').onclick = async () => {
+        const ok = await confirmDelete(`Delete the playlist "${pl.name}"? The sounds themselves won't be deleted.`);
+        if(!ok) return;
         await safeDelete('playlist:' + pl.id);
         playlists = playlists.filter(p => p.id !== pl.id);
+        expandedPlaylists.delete(pl.id);
         if(currentPlaylistId === pl.id){ currentPlaylistId = 'all'; currentIndex = 0; }
         renderPlaylistsTab();
         render();
       };
       modalBody.appendChild(row);
+
+      if(isOpen){
+        const memberWrap = document.createElement('div');
+        memberWrap.className = 'plmembers';
+        const memberClips = pl.clipIds.map(id => clips.find(c=>c.id===id)).filter(Boolean);
+        if(memberClips.length === 0){
+          memberWrap.innerHTML = `<div class="plmembersempty">No sounds in this playlist yet.</div>`;
+        } else {
+          memberClips.forEach(clip => {
+            const mrow = document.createElement('div');
+            mrow.className = 'plmember';
+            mrow.innerHTML = `
+              <button class="pmplay" aria-label="Preview"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+              <div class="pmname">${escapeHtml(clip.name)}</div>
+              <button class="pmremove" aria-label="Remove from playlist" title="Remove from playlist">✕</button>
+            `;
+            mrow.querySelector('.pmplay').onclick = () => {
+              const a = new Audio(clip.dataUrl || clip.src); a.play().catch(()=>{});
+            };
+            mrow.querySelector('.pmremove').onclick = async () => {
+              pl.clipIds = pl.clipIds.filter(id => id !== clip.id);
+              await safeSet('playlist:' + pl.id, JSON.stringify(pl));
+              renderPlaylistsTab();
+              render();
+            };
+            memberWrap.appendChild(mrow);
+          });
+        }
+        modalBody.appendChild(memberWrap);
+      }
     });
   }
 
   const scrim = $('#scrim');
   const popover = $('#popover');
   let popoverClip = null;
+
+  const confirmScrim = $('#confirmScrim');
+  const confirmBox = $('#confirmBox');
+  const confirmMsg = $('#confirmMsg');
+  const confirmCancelBtn = $('#confirmCancelBtn');
+  const confirmOkBtn = $('#confirmOkBtn');
+
+  function confirmDelete(message){
+    return new Promise((resolve) => {
+      confirmMsg.textContent = message;
+      confirmScrim.classList.add('open');
+      confirmBox.classList.add('open');
+      function cleanup(result){
+        confirmScrim.classList.remove('open');
+        confirmBox.classList.remove('open');
+        confirmScrim.removeEventListener('click', onCancel);
+        confirmCancelBtn.removeEventListener('click', onCancel);
+        confirmOkBtn.removeEventListener('click', onOk);
+        resolve(result);
+      }
+      function onCancel(){ cleanup(false); }
+      function onOk(){ cleanup(true); }
+      confirmScrim.addEventListener('click', onCancel);
+      confirmCancelBtn.addEventListener('click', onCancel);
+      confirmOkBtn.addEventListener('click', onOk);
+    });
+  }
 
   function openQuickAdd(clip){
     popoverClip = clip;
