@@ -118,6 +118,7 @@
     transform: translateY(0);
     transition: transform .08s ease, box-shadow .08s ease;
     display:flex; align-items:center; justify-content:center;
+    touch-action: none; -webkit-touch-callout: none;
   }
   .arcade:active, .arcade.pressed{
     transform: translateY(8px);
@@ -250,6 +251,26 @@
   .row .rowtags{ font-size:11px; color: rgba(255,248,236,0.45); margin-top:2px; }
   .row .rowbtn{ width:32px; height:32px; border-radius:9px; border:1px solid var(--line); background:transparent; color:var(--card); cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center;}
   .row .rowbtn.danger{ color:var(--coral); border-color: rgba(255,93,115,0.4); }
+  .triggerpill{
+    font-size:10px; font-weight:700; padding:6px 9px; border-radius:8px; border:1px solid var(--line);
+    background:rgba(255,248,236,0.05); color: rgba(255,248,236,0.6); cursor:pointer; flex-shrink:0;
+    font-family:'JetBrains Mono', monospace; letter-spacing:0.2px; white-space:nowrap;
+  }
+  .triggerpill.doubletap{ border-color: rgba(63,225,176,0.45); color:var(--teal); }
+  .triggerpill.hold{ border-color: rgba(255,210,63,0.45); color:var(--yellow); }
+  .triggerpill.loud{ border-color: rgba(255,93,115,0.45); color:var(--coral); }
+
+  .triggerOptions{ display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+  .triggerOption{
+    display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-radius:12px;
+    border:1px solid rgba(36,28,66,0.15); background: rgba(36,28,66,0.04); cursor:pointer;
+  }
+  .triggerOption .toName{ font-weight:600; font-size:14px; }
+  .triggerOption .toDesc{ font-size:11px; color:var(--ink-soft); margin-top:2px; }
+  .triggerOption .toCheck{ width:20px; height:20px; border-radius:50%; border:2px solid rgba(36,28,66,0.25); flex-shrink:0; }
+  .triggerOption.on{ border-color: var(--coral); background: rgba(255,93,115,0.08); }
+  .triggerOption.on .toCheck{ border-color:var(--coral); background:var(--coral); }
+  .triggerPopoverHint{ font-size:11px; color:var(--ink-soft); margin-top:12px; text-align:center; }
 
   .plchecklist{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .plchip{
@@ -412,6 +433,12 @@
     </div>
   </div>
 
+  <div class="popover" id="triggerPopover">
+    <h3>Play trigger</h3>
+    <div class="triggerOptions" id="triggerOptionsList"></div>
+    <div class="triggerPopoverHint">The rest of your sounds stay one-tap by default.</div>
+  </div>
+
   <div class="confirmScrim" id="confirmScrim"></div>
   <div class="confirmBox" id="confirmBox">
     <div class="confirmMsg" id="confirmMsg"></div>
@@ -461,6 +488,18 @@
   const GH_OWNER = 'Davitayvaz';
   const GH_REPO = 'DDP-Tap';
   const GH_SOUNDS_FOLDER = 'Sounds';
+
+  const TRIGGER_LABELS = { tap: 'TAP', doubletap: '2X TAP', hold: 'HOLD', loud: 'LOUD' };
+  const TRIGGER_ORDER = ['tap', 'doubletap', 'hold', 'loud'];
+  const TRIGGER_HINTS = {
+    tap: 'Tap to play',
+    doubletap: 'Double-tap to play',
+    hold: 'Hold to play',
+    loud: 'Make a loud sound to trigger this one'
+  };
+  function clipTriggerType(clip){
+    return (clip && TRIGGER_LABELS[clip.trigger]) ? clip.trigger : 'tap';
+  }
 
   const DB_NAME = 'memeBoardDB';
   const STORE_NAME = 'kv';
@@ -570,6 +609,18 @@
     personalClips.sort((a,b)=> (a.createdAt||0) - (b.createdAt||0));
 
     clips = [...sharedClips, ...personalClips];
+
+    const triggerKeys = await safeList('trigger:');
+    for(const k of triggerKeys){
+      const v = await safeGet(k);
+      if(!v) continue;
+      try{
+        const trig = JSON.parse(v);
+        const clipId = k.slice('trigger:'.length);
+        const c = clips.find(c => c.id === clipId);
+        if(c && TRIGGER_LABELS[trig]) c.trigger = trig;
+      }catch(e){}
+    }
 
     const plKeys = await safeList('playlist:');
     playlists = [];
@@ -772,10 +823,94 @@
     });
   }
 
-  arcadeBtn.addEventListener('click', () => {
-    if(isPlaying){ stopAudio(); }
-    else{ playCurrent(); }
-  });
+  function nudgeWrongTrigger(clip){
+    alertBanner(TRIGGER_HINTS[clipTriggerType(clip)] || 'Tap to play');
+  }
+
+  function handleGestureTap(){
+    if(isPlaying){ stopAudio(); return; }
+    const clip = currentClip();
+    if(!clip){ alertBanner('Add a sound first!'); return; }
+    if(clipTriggerType(clip) === 'tap'){ playCurrent(); }
+    else { nudgeWrongTrigger(clip); }
+  }
+  function handleGestureDoubleTap(){
+    if(isPlaying){ stopAudio(); return; }
+    const clip = currentClip();
+    if(!clip){ alertBanner('Add a sound first!'); return; }
+    if(clipTriggerType(clip) === 'doubletap'){ playCurrent(); }
+    else { nudgeWrongTrigger(clip); }
+  }
+  function handleGestureHold(){
+    if(isPlaying){ stopAudio(); return; }
+    const clip = currentClip();
+    if(!clip) return;
+    if(clipTriggerType(clip) === 'hold'){ playCurrent(); }
+    else { nudgeWrongTrigger(clip); }
+  }
+
+  function attachGesture(el, handlers){
+    let downX = 0, downY = 0;
+    let holdTimer = null, holdFired = false;
+    let tapTimer = null, lastTapAt = 0;
+
+    function clearHoldTimer(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; } }
+    function clearTapTimer(){ if(tapTimer){ clearTimeout(tapTimer); tapTimer = null; } }
+
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    el.addEventListener('pointerdown', (e) => {
+      downX = e.clientX; downY = e.clientY;
+      holdFired = false;
+      clearHoldTimer();
+      if(handlers.onHold){
+        holdTimer = setTimeout(() => { holdFired = true; handlers.onHold(); }, 450);
+      }
+    });
+
+    el.addEventListener('pointermove', (e) => {
+      if(holdTimer){
+        const dx = e.clientX - downX, dy = e.clientY - downY;
+        if(Math.abs(dx) > 12 || Math.abs(dy) > 12) clearHoldTimer();
+      }
+    });
+
+    el.addEventListener('pointerup', (e) => {
+      clearHoldTimer();
+      if(holdFired) return;
+      const dx = e.clientX - downX, dy = e.clientY - downY;
+      const adx = Math.abs(dx), ady = Math.abs(dy);
+
+      if((handlers.onSwipeNext || handlers.onSwipePrev) && adx > 40 && adx > ady){
+        dx < 0 ? handlers.onSwipeNext && handlers.onSwipeNext() : handlers.onSwipePrev && handlers.onSwipePrev();
+        return;
+      }
+      if(handlers.onSwipeVertical && ady > 60 && ady > adx){
+        handlers.onSwipeVertical();
+        return;
+      }
+      if(adx < 12 && ady < 12){
+        const now = Date.now();
+        if(handlers.onDoubleTap && (now - lastTapAt) < 300){
+          clearTapTimer();
+          lastTapAt = 0;
+          handlers.onDoubleTap();
+        } else {
+          lastTapAt = now;
+          if(handlers.onDoubleTap){
+            clearTapTimer();
+            tapTimer = setTimeout(() => { handlers.onTap && handlers.onTap(); }, 300);
+          } else {
+            handlers.onTap && handlers.onTap();
+          }
+        }
+      }
+    });
+
+    el.addEventListener('pointercancel', () => { clearHoldTimer(); });
+  }
+
+  attachGesture(arcadeBtn, { onTap: handleGestureTap, onDoubleTap: handleGestureDoubleTap, onHold: handleGestureHold });
   player.addEventListener('ended', () => setPlayingVisual(false));
 
   function goTo(delta){
@@ -835,43 +970,16 @@
     }
     if(e.key === 'ArrowLeft') goTo(-1);
     if(e.key === 'ArrowRight') goTo(1);
-    if(e.key === ' '){ e.preventDefault(); isPlaying ? stopAudio() : playCurrent(); }
+    if(e.key === ' '){ e.preventDefault(); handleGestureTap(); }
   });
 
-  let fTouchStartX = null, fTouchStartY = null, fDragging = false;
-  focusOverlay.addEventListener('touchstart', (e) => {
-    fTouchStartX = e.touches[0].clientX; fTouchStartY = e.touches[0].clientY; fDragging = true;
-  }, {passive:true});
-  focusOverlay.addEventListener('touchend', (e) => {
-    if(!fDragging || fTouchStartX===null) return;
-    const dx = e.changedTouches[0].clientX - fTouchStartX;
-    const dy = e.changedTouches[0].clientY - fTouchStartY;
-    const adx = Math.abs(dx), ady = Math.abs(dy);
-    if(ady > 60 && ady > adx){
-      closeFocusMode();
-    } else if(adx > 40 && adx > ady){
-      goTo(dx < 0 ? 1 : -1);
-    } else if(adx < 12 && ady < 12){
-      isPlaying ? stopAudio() : playCurrent();
-    }
-    fDragging = false; fTouchStartX = null;
-  });
-
-  let fMouseDownX = null, fMouseDownY = null;
-  focusOverlay.addEventListener('mousedown', (e) => { fMouseDownX = e.clientX; fMouseDownY = e.clientY; });
-  focusOverlay.addEventListener('mouseup', (e) => {
-    if(fMouseDownX===null) return;
-    const dx = e.clientX - fMouseDownX;
-    const dy = e.clientY - fMouseDownY;
-    const adx = Math.abs(dx), ady = Math.abs(dy);
-    if(ady > 60 && ady > adx){
-      closeFocusMode();
-    } else if(adx > 40 && adx > ady){
-      goTo(dx < 0 ? 1 : -1);
-    } else if(adx < 12 && ady < 12){
-      isPlaying ? stopAudio() : playCurrent();
-    }
-    fMouseDownX = null; fMouseDownY = null;
+  attachGesture(focusOverlay, {
+    onTap: handleGestureTap,
+    onDoubleTap: handleGestureDoubleTap,
+    onHold: handleGestureHold,
+    onSwipeNext: () => goTo(1),
+    onSwipePrev: () => goTo(-1),
+    onSwipeVertical: closeFocusMode
   });
 
   $('#addSoundBtn').onclick = () => $('#fileInput').click();
@@ -954,12 +1062,14 @@
             : `<input class="rowname" value="${escapeHtml(clip.name)}">`}
           <div class="rowtags">${memberOf.length ? memberOf.map(p=>p.name).join(', ') : 'Not in any playlist'}</div>
         </div>
+        <button class="triggerpill ${clipTriggerType(clip)}" data-act="trigger">${TRIGGER_LABELS[clipTriggerType(clip)]}</button>
         <button class="rowbtn" data-act="tag">☰</button>
         ${isShared ? '' : '<button class="rowbtn danger" data-act="del">🗑</button>'}
       `;
       row.querySelector('.rowplay').onclick = () => {
         const a = new Audio(clip.dataUrl || clip.src); a.play().catch(()=>{});
       };
+      row.querySelector('[data-act="trigger"]').onclick = () => openTriggerPicker(clip);
       if(!isShared){
         const nameInput = row.querySelector('.rowname');
         nameInput.addEventListener('change', async () => {
@@ -971,6 +1081,7 @@
           const ok = await confirmDelete(`Delete "${clip.name}"? This can't be undone.`);
           if(!ok) return;
           await safeDelete('clip:' + clip.id);
+          await safeDelete('trigger:' + clip.id);
           playlists.forEach(p => { p.clipIds = p.clipIds.filter(id => id !== clip.id); safeSet('playlist:'+p.id, JSON.stringify(p)); });
           clips = clips.filter(c => c.id !== clip.id);
           renderSoundsTab();
@@ -1075,6 +1186,9 @@
   const popover = $('#popover');
   let popoverClip = null;
 
+  const triggerPopover = $('#triggerPopover');
+  let triggerPopoverClip = null;
+
   const confirmScrim = $('#confirmScrim');
   const confirmBox = $('#confirmBox');
   const confirmMsg = $('#confirmMsg');
@@ -1103,6 +1217,7 @@
   }
 
   function openQuickAdd(clip){
+    closeTriggerPopover();
     popoverClip = clip;
     renderPopoverList();
     scrim.classList.add('open');
@@ -1113,7 +1228,44 @@
     popover.classList.remove('open');
     popoverClip = null;
   }
-  scrim.onclick = closePopover;
+  function openTriggerPicker(clip){
+    closePopover();
+    triggerPopoverClip = clip;
+    renderTriggerOptions();
+    scrim.classList.add('open');
+    triggerPopover.classList.add('open');
+  }
+  function closeTriggerPopover(){
+    scrim.classList.remove('open');
+    triggerPopover.classList.remove('open');
+    triggerPopoverClip = null;
+  }
+  scrim.onclick = () => { closePopover(); closeTriggerPopover(); };
+
+  function renderTriggerOptions(){
+    const list = $('#triggerOptionsList');
+    list.innerHTML = '';
+    const current = clipTriggerType(triggerPopoverClip);
+    TRIGGER_ORDER.forEach(key => {
+      const opt = document.createElement('div');
+      opt.className = 'triggerOption' + (current === key ? ' on' : '');
+      opt.innerHTML = `
+        <div>
+          <div class="toName">${TRIGGER_LABELS[key]}</div>
+          <div class="toDesc">${TRIGGER_HINTS[key]}</div>
+        </div>
+        <div class="toCheck"></div>
+      `;
+      opt.onclick = async () => {
+        triggerPopoverClip.trigger = key;
+        await safeSet('trigger:' + triggerPopoverClip.id, JSON.stringify(key));
+        renderTriggerOptions();
+        renderSoundsTab();
+        closeTriggerPopover();
+      };
+      list.appendChild(opt);
+    });
+  }
 
   function renderPopoverList(){
     const list = $('#popoverList');
